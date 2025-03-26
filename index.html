@@ -3,32 +3,42 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Unity WebGL Player | ThruTheFog_StormOfAnger</title>
+    <title>Unity WebGL Player | Storm of Anger</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=yes">
     <style>
-      /* 添加加载错误提示样式 */
+      /* 错误提示样式 */
       #unity-load-error {
         display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.9);
+        color: white;
+        z-index: 9999;
+        padding: 20px;
+        text-align: center;
+        font-family: Arial, sans-serif;
+      }
+      .error-content {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: rgba(0,0,0,0.8);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
-        z-index: 999;
+        width: 80%;
+        max-width: 500px;
       }
       #unity-retry-button {
-        margin-top: 15px;
-        padding: 8px 20px;
-        background: #2ecc71;
+        background: #4CAF50;
         border: none;
         color: white;
-        border-radius: 5px;
+        padding: 12px 24px;
+        margin-top: 20px;
+        font-size: 16px;
+        border-radius: 4px;
         cursor: pointer;
       }
     </style>
@@ -46,115 +56,156 @@
       <div id="unity-footer">
         <div id="unity-webgl-logo"></div>
         <div id="unity-fullscreen-button"></div>
-        <div id="unity-build-title">ThruTheFog_StormOfAnger</div>
+        <div id="unity-build-title">Storm of Anger</div>
       </div>
     </div>
 
-    <!-- 新增错误提示容器 -->
     <div id="unity-load-error">
-      <h3>⚠️ 加载遇到问题</h3>
-      <p id="unity-error-message"></p>
-      <button id="unity-retry-button">重试</button>
+      <div class="error-content">
+        <h2>⚠️ 游戏加载失败</h2>
+        <p id="unity-error-message">正在尝试重新连接...</p>
+        <button id="unity-retry-button">点击重试</button>
+        <p style="margin-top:30px;font-size:12px;color:#aaa">
+          如果多次重试无效，请检查网络或稍后再试
+        </p>
+      </div>
     </div>
 
     <script>
-      // GitHub Pages特殊配置
-      const isGitHubPages = window.location.host.includes('github.io');
-      const basePath = isGitHubPages ? '/Storm-of-Anger' : ''; // 替换为你的仓库名
+      // ==================== GitHub Pages 专用配置 ====================
+      const GITHUB_REPO_NAME = 'Storm-of-Anger'; // 必须改成你的仓库名！！！
+      const IS_LOCAL = window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1';
       
-      // 统一资源路径处理
-      function getBuildUrl(path) {
-        return `${basePath}/Build${path}`;
+      // 自动修正资源路径
+      function getCorrectPath(path) {
+        if (IS_LOCAL) return path;
+        
+        // GitHub Pages 特殊路径处理
+        if (window.location.pathname.includes('github.io')) {
+          return `/${GITHUB_REPO_NAME}${path}`;
+        }
+        return path;
       }
 
-      // 显示错误函数
-      function showError(message, isFatal = false) {
-        console.error(message);
-        document.getElementById('unity-error-message').textContent = message;
-        const errorPanel = document.getElementById('unity-load-error');
-        errorPanel.style.display = 'block';
-        
-        if (isFatal) {
-          document.getElementById('unity-loading-bar').style.display = 'none';
+      // ==================== 增强版加载器 ====================
+      let retryCount = 0;
+      const MAX_RETRIES = 3;
+      
+      async function loadWithFallback(url, isFramework = false) {
+        try {
+          // 尝试直接加载
+          return await loadResource(url);
+        } catch (error) {
+          if (retryCount >= MAX_RETRIES) throw error;
+          
+          retryCount++;
+          console.warn(`第 ${retryCount} 次重试加载: ${url}`);
+          
+          // 特别处理框架文件
+          if (isFramework) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+          }
+          
+          // 尝试无缓存加载
+          return loadResource(url + '?nocache=' + Date.now());
         }
       }
 
-      // 重试按钮逻辑
-      document.getElementById('unity-retry-button').addEventListener('click', () => {
-        location.reload();
-      });
-
-      // 增强版文件加载器
-      function loadScript(src, integrity = '') {
+      function loadResource(url) {
         return new Promise((resolve, reject) => {
           const script = document.createElement('script');
-          script.src = src;
-          
-          if (integrity) {
-            script.integrity = integrity;
-            script.crossOrigin = 'anonymous';
-          }
-          
+          script.src = url;
           script.onload = resolve;
-          script.onerror = () => reject(new Error(`加载失败: ${src}`));
+          script.onerror = () => reject(new Error(`加载失败: ${url}`));
           document.body.appendChild(script);
         });
       }
 
-      // 主初始化函数
+      // ==================== Unity 初始化 ====================
       async function initializeUnity() {
         try {
+          showError("正在初始化游戏...", false);
+          
           const config = {
-            dataUrl: getBuildUrl('/WebGI.data'),
-            frameworkUrl: getBuildUrl('/WebGI.framework.js'),
-            codeUrl: getBuildUrl('/WebGI.wasm'),
-            streamingAssetsUrl: getBuildUrl('/StreamingAssets'),
+            dataUrl: getCorrectPath('/Build/WebGI.data'),
+            frameworkUrl: getCorrectPath('/Build/WebGI.framework.js'),
+            codeUrl: getCorrectPath('/Build/WebGI.wasm'),
+            streamingAssetsUrl: getCorrectPath('/StreamingAssets'),
             companyName: "TB66631",
-            productName: "ThruTheFog_StormOfAnger",
+            productName: "Storm of Anger",
             productVersion: "2.0",
-            totalMemory: 536870912, // 512MB
-            memoryGrowthLimit: 2147483648 // 2GB
+            totalMemory: 512 * 1024 * 1024, // 512MB
+            memoryGrowthLimit: 2 * 1024 * 1024 * 1024 // 2GB
           };
 
-          // 1. 先加载框架脚本
-          await loadScript(config.frameworkUrl).catch(async e => {
-            showError("核心文件加载较慢，正在尝试备用方案...");
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            return loadScript(config.frameworkUrl);
-          });
-
-          // 2. 初始化Unity实例
+          // 1. 优先加载框架文件
+          await loadWithFallback(config.frameworkUrl, true);
+          
+          // 2. 创建Unity实例
           const unityInstance = await createUnityInstance(
-            document.querySelector("#unity-canvas"), 
-            config, 
+            document.getElementById('unity-canvas'),
+            config,
             (progress) => {
-              document.querySelector("#unity-progress-bar-full").style.width = 
-                100 * progress + "%";
+              document.getElementById('unity-progress-bar-full').style.width = 
+                `${Math.round(100 * progress)}%`;
             }
           );
 
-          // 3. 帧率控制
+          // 3. 性能优化
           if (typeof unityInstance.setFrameRate === 'function') {
             unityInstance.setFrameRate(60);
           } else {
             unityInstance.Module.Application.targetFrameRate = 60;
           }
 
-          // 4. 完成加载
-          document.querySelector("#unity-loading-bar").style.display = "none";
+          // 4. 隐藏加载界面
+          document.getElementById('unity-loading-bar').style.display = 'none';
+          document.getElementById('unity-load-error').style.display = 'none';
           
-          // 5. 全屏按钮处理
-          document.querySelector("#unity-fullscreen-button").onclick = () => {
+          // 5. 全屏按钮
+          document.getElementById('unity-fullscreen-button').onclick = () => {
             unityInstance.SetFullscreen(1);
           };
 
         } catch (error) {
           showError(`初始化失败: ${error.message}`, true);
+          console.error('完整错误信息:', error);
         }
       }
 
-      // 启动加载
-      initializeUnity();
+      // ==================== 错误处理 ====================
+      function showError(message, isFatal) {
+        const errorElement = document.getElementById('unity-error-message');
+        errorElement.innerHTML = message;
+        
+        const errorPanel = document.getElementById('unity-load-error');
+        errorPanel.style.display = 'block';
+        
+        if (isFatal) {
+          document.getElementById('unity-loading-bar').style.display = 'none';
+          document.getElementById('unity-retry-button').style.display = 'block';
+        } else {
+          document.getElementById('unity-retry-button').style.display = 'none';
+        }
+      }
+
+      // 重试按钮事件
+      document.getElementById('unity-retry-button').addEventListener('click', () => {
+        location.reload();
+      });
+
+      // ==================== 启动游戏 ====================
+      // 延迟1秒启动以避免浏览器预加载问题
+      setTimeout(() => {
+        // 先检查是否支持WebGL
+        if (!window.WebGLRenderingContext) {
+          showError("您的浏览器不支持WebGL，请使用Chrome/Firefox等现代浏览器", true);
+          return;
+        }
+        
+        initializeUnity();
+      }, 1000);
     </script>
   </body>
 </html>
