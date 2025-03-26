@@ -62,7 +62,7 @@
         productVersion: "2.0",
         showBanner: unityShowBanner,
 
-        // 内存配置 (单位：字节)
+        // 内存配置（单位：字节）
         totalMemory: 536870912, // 512MB
         memoryGrowthLimit: 2147483648, // 2GB
       };
@@ -84,26 +84,45 @@
         }).then((unityInstance) => {
           loadingBar.style.display = "none";
 
-          // 新版帧率控制API
+          // === 帧率控制方案 ===
+          // 方法1：直接调用新版API（Unity 2021+）
           if (typeof unityInstance.setFrameRate === 'function') {
             unityInstance.setFrameRate(60);
-            console.log("成功锁定60FPS");
-          } else {
-            console.warn("setFrameRate API不可用，使用备用方案");
-            Application.targetFrameRate = 60;
+            console.log("[性能] 使用setFrameRate锁定60FPS");
+          }
+          // 方法2：通过模拟按键触发Unity内部设置
+          else {
+            console.log("[性能] 使用模拟按键设置帧率");
+            var event = new KeyboardEvent('keydown', {
+              key: 'F',
+              ctrlKey: true,
+              bubbles: true
+            });
+            document.dispatchEvent(event);
           }
 
-          // 新版内存监控
-          if (typeof unityInstance.performance !== 'undefined') {
-            setInterval(() => {
-              const used = unityInstance.performance.memory.usedJSHeapSize;
-              const limit = config.totalMemory * 0.9;
-              if (used > limit) {
-                unityInstance.SendMessage('WebGLManager', 'OnMemoryWarning');
-                console.warn(`内存使用: ${(used/1048576).toFixed(1)}MB/${(limit/1048576).toFixed(1)}MB`);
+          // === 内存监控 ===
+          setInterval(() => {
+            try {
+              // 方法1：使用performance.memory
+              if (window.performance?.memory) {
+                var usedMB = (window.performance.memory.usedJSHeapSize / 1048576).toFixed(1);
+                var totalMB = (config.totalMemory / 1048576).toFixed(1);
+                if (window.performance.memory.usedJSHeapSize > config.totalMemory * 0.8) {
+                  console.warn(`[内存] 使用率过高: ${usedMB}MB/${totalMB}MB`);
+                }
               }
-            }, 3000);
-          }
+              // 方法2：显示内存压力提示
+              else if (typeof unityInstance.Module?.HEAP8 !== 'undefined') {
+                var heapSize = unityInstance.Module.HEAP8.length;
+                if (heapSize > config.totalMemory * 0.8) {
+                  unityShowBanner('内存使用较高，建议关闭其他标签页', 'warning');
+                }
+              }
+            } catch (e) {
+              console.log("[监控] 内存检测失败:", e);
+            }
+          }, 10000);
 
           fullscreenButton.onclick = () => {
             unityInstance.SetFullscreen(1);
