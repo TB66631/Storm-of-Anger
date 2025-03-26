@@ -7,6 +7,31 @@
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=yes">
+    <style>
+      /* 添加加载错误提示样式 */
+      #unity-load-error {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+        z-index: 999;
+      }
+      #unity-retry-button {
+        margin-top: 15px;
+        padding: 8px 20px;
+        background: #2ecc71;
+        border: none;
+        color: white;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+    </style>
   </head>
   <body>
     <div id="unity-container" class="unity-desktop">
@@ -17,124 +42,119 @@
           <div id="unity-progress-bar-full"></div>
         </div>
       </div>
-      <div id="unity-warning"> </div>
+      <div id="unity-warning"></div>
       <div id="unity-footer">
         <div id="unity-webgl-logo"></div>
         <div id="unity-fullscreen-button"></div>
         <div id="unity-build-title">ThruTheFog_StormOfAnger</div>
       </div>
     </div>
+
+    <!-- 新增错误提示容器 -->
+    <div id="unity-load-error">
+      <h3>⚠️ 加载遇到问题</h3>
+      <p id="unity-error-message"></p>
+      <button id="unity-retry-button">重试</button>
+    </div>
+
     <script>
-      var container = document.querySelector("#unity-container");
-      var canvas = document.querySelector("#unity-canvas");
-      var loadingBar = document.querySelector("#unity-loading-bar");
-      var progressBarFull = document.querySelector("#unity-progress-bar-full");
-      var fullscreenButton = document.querySelector("#unity-fullscreen-button");
-      var warningBanner = document.querySelector("#unity-warning");
-
-      function unityShowBanner(msg, type) {
-        function updateBannerVisibility() {
-          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
-        }
-        var div = document.createElement('div');
-        div.innerHTML = msg;
-        warningBanner.appendChild(div);
-        if (type == 'error') div.style = 'background: red; padding: 10px;';
-        else {
-          if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
-          setTimeout(function() {
-            warningBanner.removeChild(div);
-            updateBannerVisibility();
-          }, 5000);
-        }
-        updateBannerVisibility();
+      // GitHub Pages特殊配置
+      const isGitHubPages = window.location.host.includes('github.io');
+      const basePath = isGitHubPages ? '/Storm-of-Anger' : ''; // 替换为你的仓库名
+      
+      // 统一资源路径处理
+      function getBuildUrl(path) {
+        return `${basePath}/Build${path}`;
       }
 
-      var buildUrl = "Build";
-      var loaderUrl = buildUrl + "/WebGI.loader.js";
-      var config = {
-        dataUrl: buildUrl + "/WebGI.data",
-        frameworkUrl: buildUrl + "/WebGI.framework.js",
-        codeUrl: buildUrl + "/WebGI.wasm",
-        streamingAssetsUrl: "StreamingAssets",
-        companyName: "TB66631",
-        productName: "ThruTheFog_StormOfAnger",
-        productVersion: "2.0",
-        showBanner: unityShowBanner,
-
-        // 内存配置（单位：字节）
-        totalMemory: 536870912, // 512MB
-        memoryGrowthLimit: 2147483648, // 2GB
-      };
-
-      // 移动设备检测
-      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        container.className = "unity-mobile";
-        canvas.className = "unity-mobile";
-        unityShowBanner('移动端优化模式已启用', 'warning');
+      // 显示错误函数
+      function showError(message, isFatal = false) {
+        console.error(message);
+        document.getElementById('unity-error-message').textContent = message;
+        const errorPanel = document.getElementById('unity-load-error');
+        errorPanel.style.display = 'block';
+        
+        if (isFatal) {
+          document.getElementById('unity-loading-bar').style.display = 'none';
+        }
       }
 
-      loadingBar.style.display = "block";
+      // 重试按钮逻辑
+      document.getElementById('unity-retry-button').addEventListener('click', () => {
+        location.reload();
+      });
 
-      var script = document.createElement("script");
-      script.src = loaderUrl;
-      script.onload = () => {
-        createUnityInstance(canvas, config, (progress) => {
-          progressBarFull.style.width = 100 * progress + "%";
-        }).then((unityInstance) => {
-          loadingBar.style.display = "none";
+      // 增强版文件加载器
+      function loadScript(src, integrity = '') {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          
+          if (integrity) {
+            script.integrity = integrity;
+            script.crossOrigin = 'anonymous';
+          }
+          
+          script.onload = resolve;
+          script.onerror = () => reject(new Error(`加载失败: ${src}`));
+          document.body.appendChild(script);
+        });
+      }
 
-          // === 帧率控制方案 ===
-          // 方法1：直接调用新版API（Unity 2021+）
+      // 主初始化函数
+      async function initializeUnity() {
+        try {
+          const config = {
+            dataUrl: getBuildUrl('/WebGI.data'),
+            frameworkUrl: getBuildUrl('/WebGI.framework.js'),
+            codeUrl: getBuildUrl('/WebGI.wasm'),
+            streamingAssetsUrl: getBuildUrl('/StreamingAssets'),
+            companyName: "TB66631",
+            productName: "ThruTheFog_StormOfAnger",
+            productVersion: "2.0",
+            totalMemory: 536870912, // 512MB
+            memoryGrowthLimit: 2147483648 // 2GB
+          };
+
+          // 1. 先加载框架脚本
+          await loadScript(config.frameworkUrl).catch(async e => {
+            showError("核心文件加载较慢，正在尝试备用方案...");
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            return loadScript(config.frameworkUrl);
+          });
+
+          // 2. 初始化Unity实例
+          const unityInstance = await createUnityInstance(
+            document.querySelector("#unity-canvas"), 
+            config, 
+            (progress) => {
+              document.querySelector("#unity-progress-bar-full").style.width = 
+                100 * progress + "%";
+            }
+          );
+
+          // 3. 帧率控制
           if (typeof unityInstance.setFrameRate === 'function') {
             unityInstance.setFrameRate(60);
-            console.log("[性能] 使用setFrameRate锁定60FPS");
-          }
-          // 方法2：通过模拟按键触发Unity内部设置
-          else {
-            console.log("[性能] 使用模拟按键设置帧率");
-            var event = new KeyboardEvent('keydown', {
-              key: 'F',
-              ctrlKey: true,
-              bubbles: true
-            });
-            document.dispatchEvent(event);
+          } else {
+            unityInstance.Module.Application.targetFrameRate = 60;
           }
 
-          // === 内存监控 ===
-          setInterval(() => {
-            try {
-              // 方法1：使用performance.memory
-              if (window.performance?.memory) {
-                var usedMB = (window.performance.memory.usedJSHeapSize / 1048576).toFixed(1);
-                var totalMB = (config.totalMemory / 1048576).toFixed(1);
-                if (window.performance.memory.usedJSHeapSize > config.totalMemory * 0.8) {
-                  console.warn(`[内存] 使用率过高: ${usedMB}MB/${totalMB}MB`);
-                }
-              }
-              // 方法2：显示内存压力提示
-              else if (typeof unityInstance.Module?.HEAP8 !== 'undefined') {
-                var heapSize = unityInstance.Module.HEAP8.length;
-                if (heapSize > config.totalMemory * 0.8) {
-                  unityShowBanner('内存使用较高，建议关闭其他标签页', 'warning');
-                }
-              }
-            } catch (e) {
-              console.log("[监控] 内存检测失败:", e);
-            }
-          }, 10000);
-
-          fullscreenButton.onclick = () => {
+          // 4. 完成加载
+          document.querySelector("#unity-loading-bar").style.display = "none";
+          
+          // 5. 全屏按钮处理
+          document.querySelector("#unity-fullscreen-button").onclick = () => {
             unityInstance.SetFullscreen(1);
           };
-        }).catch((message) => {
-          unityShowBanner('加载失败: ' + message, 'error');
-        });
-      };
-      script.onerror = () => {
-        unityShowBanner('加载脚本失败，请刷新重试', 'error');
-      };
-      document.body.appendChild(script);
+
+        } catch (error) {
+          showError(`初始化失败: ${error.message}`, true);
+        }
+      }
+
+      // 启动加载
+      initializeUnity();
     </script>
   </body>
 </html>
