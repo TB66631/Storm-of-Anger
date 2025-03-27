@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Unity WebGL Optimizer</title>
+    <script>
+        // 配置参数
+        const config = {
+            initialMemoryMB: 512,
+            maxMemoryMB: 2048,
+            targetFPS: 60,
+            disableVSync: true,
+            enableDynamicQuality: true,
+            minQualityLevel: 0,
+            maxQualityLevel: 5,
+            resolutionScale: 0.8,
+            performanceCheckInterval: 5000, // 毫秒
+            downgradeFPS: 30,
+            upgradeFPS: 50
+        };
+
+        // 初始化优化设置
+        function initializeOptimizations() {
+            // 内存设置
+            const memorySize = Math.max(config.initialMemoryMB, config.maxMemoryMB) * 1024 * 1024;
+            window.UnityLoader = window.UnityLoader || {};
+            window.UnityLoader.SystemMemory = memorySize;
+
+            // 帧率和 VSync 设置
+            if (config.disableVSync) {
+                window.requestAnimationFrame = (callback) => setTimeout(callback, 1000 / config.targetFPS);
+            }
+
+            // 分辨率缩放
+            const canvas = document.getElementById('unity-canvas');
+            if (canvas && config.resolutionScale < 1.0) {
+                canvas.style.width = `${window.innerWidth * config.resolutionScale}px`;
+                canvas.style.height = `${window.innerHeight * config.resolutionScale}px`;
+            }
+
+            console.log(`WebGL Optimizer Initialized:\n` +
+                        `Memory: ${config.initialMemoryMB}-${config.maxMemoryMB}MB\n` +
+                        `FPS: ${config.targetFPS} (VSync: ${!config.disableVSync})\n` +
+                        `Resolution Scale: ${config.resolutionScale * 100}%`);
+        }
+
+        // 性能监控器
+        function startPerformanceMonitor() {
+            let lastFrameTime = performance.now();
+
+            function monitorPerformance() {
+                const currentTime = performance.now();
+                const deltaTime = currentTime - lastFrameTime;
+                const currentFPS = Math.round(1000 / deltaTime);
+
+                console.log(`Current FPS: ${currentFPS}`);
+
+                // 动态质量调整
+                if (config.enableDynamicQuality) {
+                    const currentQualityLevel = Unity.qualityLevel || config.maxQualityLevel;
+
+                    if (currentFPS < config.downgradeFPS && currentQualityLevel > config.minQualityLevel) {
+                        Unity.qualityLevel = currentQualityLevel - 1;
+                        console.log("Quality downgraded due to low FPS.");
+                    } else if (currentFPS > config.upgradeFPS && currentQualityLevel < config.maxQualityLevel) {
+                        Unity.qualityLevel = currentQualityLevel + 1;
+                        console.log("Quality upgraded due to stable FPS.");
+                    }
+                }
+
+                lastFrameTime = currentTime;
+                setTimeout(monitorPerformance, config.performanceCheckInterval);
+            }
+
+            monitorPerformance();
+        }
+
+        // 页面加载完成时初始化
+        window.onload = function () {
+            initializeOptimizations();
+            startPerformanceMonitor();
+        };
+    </script>
+</head>
+<body>
+    <canvas id="unity-canvas" width="960" height="600" style="background: #000; display: block; margin: auto;"></canvas>
+    <script src="Build/UnityLoader.js"></script>
+    <script>
+        const unityInstance = UnityLoader.instantiate("unity-canvas", "Build/Build.json", { onProgress: UnityProgress });
+    </script>
+</body>
+</html>
