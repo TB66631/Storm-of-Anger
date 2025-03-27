@@ -1,2 +1,2 @@
 # Storm-of-Anger
-What Can I Say？
+此游戏网页版暂时停用
